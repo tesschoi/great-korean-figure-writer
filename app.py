@@ -9,31 +9,34 @@ import urllib.parse
 
 # --- 1. 앱 설정 및 CSS 스타일링 (폰트, 제목 등) ---
 def setup_page():
-    # Nanum Myeongjo (명조체) 폰트 적용을 위한 CSS
+    # Noto Sans KR (깔끔한 폰트) 및 Nanum Myeongjo (명조체) 폰트 적용을 위한 CSS
     st.markdown(
         """
         <style>
-        @import url('https://fonts.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap');
+        @import url('https://fonts.com/css2?family=Nanum+Myeongjo:wght@400;700&family=Noto+Sans+KR:wght@400;700&display=swap');
         
-        /* 주 폰트 스타일 */
-        .main-font, .stMarkdown, .stTextArea textarea, .stTextInput input {
-            font-family: 'Nanum Myeongjo', serif !important;
+        /* 1. 전체 UI (제목, 버튼, 안내 등)는 가독성 좋은 Noto Sans KR (고딕체) 적용 */
+        .stApp, .stMarkdown, h1, h2, h3, h4, .stButton, .stTextInput, .stFileUploader {
+            font-family: 'Noto Sans KR', sans-serif !important;
         }
-        
-        /* 텍스트 입력 영역 폰트도 명조체로 강제 적용 */
+
+        /* 2. 학생의 작성/번역 결과/피드백 내용 (컨텐츠 영역)만 Nanum Myeongjo (명조체) 적용 */
+        /* 텍스트 입력 영역 (작성란) - 명조체 */
         .stTextArea textarea {
+            font-family: 'Nanum Myeongjo', serif !important;
             font-size: 1.1em;
             line-height: 1.6;
         }
-
-        /* 제목 스타일 */
+        
+        /* 제목 스타일 (Noto Sans KR 유지) */
         h1 {
             color: #1E88E5; /* 산뜻한 파란색 */
             text-align: center;
         }
 
-        /* 피드백 박스 스타일 */
+        /* 피드백 박스 스타일 (명조체 적용) */
         .feedback-box {
+            font-family: 'Nanum Myeongjo', serif !important; /* 명조체 강제 적용 */
             background-color: #E3F2FD; 
             border-left: 5px solid #1E88E5;
             padding: 20px;
@@ -43,8 +46,9 @@ def setup_page():
             white-space: pre-wrap; /* 피드백 내용 줄바꿈 유지 */
         }
         
-        /* 번역 결과 박스 스타일 추가 */
+        /* 번역 결과 박스 스타일 추가 (명조체 적용) */
         .translation-box {
+            font-family: 'Nanum Myeongjo', serif !important; /* 명조체 강제 적용 */
             background-color: #f0fdf4; /* 연한 초록색 배경 */
             border: 2px solid #16a34a; /* 진한 초록색 테두리 */
             padding: 15px;
@@ -181,12 +185,15 @@ def create_mailto_link(essay, feedback, email):
 
 # --- 3. Streamlit 메인 함수 ---
 def main():
+    # Streamlit 페이지 설정을 가장 먼저 실행하여 넓은 화면(Wide Layout)을 기본으로 사용하도록 지정
+    st.set_page_config(layout="wide") 
+    
     setup_page()
     
-    # 작성 조건 안내 (생략)
+    # 작성 조건 안내 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
     st.markdown(
         """
-        <div class="main-font">
+        <div>
         환영합니다! 아래 조건에 따라 **여러분이 소개하고 싶은 한국의 위인**을 영어로 소개하는 글을 작성하고 피드백을 받아보세요.
         
         ### 📝 필수 작성 조건 (Content Check)
@@ -236,7 +243,7 @@ def main():
     # 번역 결과를 깔끔하게 표시
     st.markdown("#### ✨ 번역 결과 (English)")
     st.markdown(
-        f'<div class="translation-box main-font">{st.session_state["translated_text"]}</div>',
+        f'<div class="translation-box">{st.session_state["translated_text"]}</div>',
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -273,15 +280,16 @@ def main():
                 
                 st.markdown("---")
                 st.markdown("### 🤖 AI 튜터 피드백 결과")
-                st.markdown(f'<div class="feedback-box main-font">{feedback}</div>', unsafe_allow_html=True)
+                # 피드백 박스는 명조체 유지
+                st.markdown(f'<div class="feedback-box">{feedback}</div>', unsafe_allow_html=True)
 
                 st.balloons() 
                 
-                # 수정 유도 메시지
+                # 수정 유도 메시지 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
                 st.markdown(
                     """
                     <br>
-                    <div class="main-font" style="background-color: #fffde7; padding: 10px; border-radius: 5px; border-left: 5px solid #FFC107;">
+                    <div style="background-color: #fffde7; padding: 10px; border-radius: 5px; border-left: 5px solid #FFC107;">
                     👆 **수정하고 다시 받기:** 피드백을 참고하여 위의 '내 소개글 작성하기' 칸에서 글을 직접 수정해 보세요! 모든 조건에 O를 받을 때까지 반복할 수 있습니다.
                     </div>
                     """, 
@@ -312,10 +320,10 @@ def main():
                     teacher_email
                 )
                 
-                # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행
+                # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
                 st.markdown(
                     f"""
-                    <div class="main-font" style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; border: 1px solid #4CAF50;">
+                    <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; border: 1px solid #4CAF50;">
                         <p>👆 위 링크를 클릭하면 학생의 이메일 앱(또는 웹 메일)이 열립니다.</p>
                         <a href="{mailto_href}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-align: center; border-radius: 5px; text-decoration: none; font-size: 1.1em; margin-top: 10px;">
                             ✉️ 이메일 작성 시작하기
