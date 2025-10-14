@@ -6,6 +6,8 @@ import os
 from google import genai
 from google.genai import types
 import urllib.parse 
+import base64
+import io # 파일 처리 및 Base64 인코딩을 위해 추가
 
 # --- 1. 앱 설정 및 CSS 스타일링 (폰트, 제목 등) ---
 def setup_page():
@@ -160,19 +162,32 @@ def get_translation(korean_text):
     except Exception as e:
         return f"번역 API 호출 중 오류 발생: {e}"
 
-# --- 이메일 링크 생성 함수 ---
-def create_mailto_link(essay, feedback, email):
+# --- 이메일 링크 생성 함수 (첨부 파일 처리 로직 추가) ---
+def create_mailto_link(essay, feedback, email, uploaded_file_data):
+    
+    image_html = ""
+    # Base64로 인코딩된 이미지 데이터를 HTML <img> 태그로 변환하여 본문에 삽입
+    if uploaded_file_data and uploaded_file_data.get('data') and uploaded_file_data.get('type'):
+        # max-width를 100%로 설정하여 이메일 클라이언트에서 크기 조절이 가능하게 함
+        image_html = (
+            "<br><br>----------------------------------------------------<br>"
+            "**3. 학생이 첨부한 위인 사진 (Inline Image):**<br>"
+            f"<img src='data:{uploaded_file_data['type']};base64,{uploaded_file_data['data']}' alt='Uploaded Hero Photo' style='max-width:300px; width:100%; height:auto;'><br>"
+            "----------------------------------------------------<br>"
+        )
+
+    # 이메일 본문 내용 (HTML/텍스트 혼합)
     body_content = (
         "안녕하세요 선생님,\n\n"
         "[학생 이름]: [반/번호] \n"
-        "AI 튜터링을 완료한 저의 위인 소개글 최종 결과입니다.\n"
+        "AI 튜터링을 완료한 저의 위인 소개글 최종 결과입니다.\n\n"
         "----------------------------------------------------\n"
         "**1. 학생이 작성한 최종 글:**\n"
         f"{essay}\n\n"
         "----------------------------------------------------\n"
         "**2. AI가 제공한 최종 피드백:**\n"
         f"{feedback}\n"
-        "----------------------------------------------------\n"
+        f"{image_html}" # Base64 이미지 HTML을 본문에 삽입
     )
     
     subject = "AI 튜터 작문 최종 결과: 한국 위인 소개글 (학생 이름과 반/번호를 꼭 수정하세요)"
@@ -261,6 +276,7 @@ def main():
 
     # 위인 사진 업로드 
     st.markdown("### 📸 위인 사진 업로드 (선택, 외양 묘사를 위해 권장)")
+    # 'uploaded_file' 객체를 세션 상태에 저장하여 이메일 전송 시 사용합니다.
     uploaded_file = st.file_uploader("위인의 사진을 업로드해주세요.", type=["png", "jpg", "jpeg"])
     if uploaded_file is not None:
         st.image(uploaded_file, caption="업로드된 위인 사진", width=250)
@@ -278,6 +294,26 @@ def main():
                 st.session_state['user_essay'] = user_text
                 st.session_state['ai_feedback'] = feedback
                 
+                # --- 사진 파일 처리 및 세션 저장 (Base64 인코딩) ---
+                st.session_state['uploaded_file_data'] = None
+                if uploaded_file is not None:
+                    try:
+                        # 1. 파일 데이터를 읽고 Base64로 인코딩
+                        file_bytes = uploaded_file.read()
+                        base64_encoded_data = base64.b64encode(file_bytes).decode()
+                        mime_type = uploaded_file.type
+                        
+                        # 2. 세션 상태에 저장
+                        st.session_state['uploaded_file_data'] = {
+                            'data': base64_encoded_data,
+                            'type': mime_type
+                        }
+                    except Exception as e:
+                        # 파일 처리 실패 시 사진 없이 전송
+                        st.warning("사진 처리 중 오류가 발생했습니다. 사진 없이 이메일이 전송됩니다.")
+                        st.session_state['uploaded_file_data'] = None
+                # --- 파일 처리 끝 ---
+
                 st.markdown("---")
                 st.markdown("### 🤖 AI 튜터 피드백 결과")
                 # 피드백 박스는 명조체 유지
@@ -285,7 +321,7 @@ def main():
 
                 st.balloons() 
                 
-                # 수정 유도 메시지 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
+                # 수정 유도 메시지
                 st.markdown(
                     """
                     <br>
@@ -317,10 +353,11 @@ def main():
                 mailto_href = create_mailto_link(
                     st.session_state['user_essay'], 
                     st.session_state['ai_feedback'], 
-                    teacher_email
+                    teacher_email,
+                    st.session_state.get('uploaded_file_data') # Base64 데이터 전달
                 )
                 
-                # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
+                # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행
                 st.markdown(
                     f"""
                     <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; border: 1px solid #4CAF50;">
@@ -329,6 +366,7 @@ def main():
                             ✉️ 이메일 작성 시작하기
                         </a>
                         <p style="margin-top: 15px; color: #D32F2F;">**[주의]** 이메일이 열리면, **제목에 학생 이름과 반/번호를 반드시 수정**하고 내용을 확인한 후 발송하도록 학생들에게 지도해 주세요.</p>
+                        <p style="color: #FFA000; font-size: 0.9em;">**[사진 참고]** 용량이 큰 사진은 이메일에 포함되지 않을 수 있습니다.</p>
                     </div>
                     """, unsafe_allow_html=True
                 )
@@ -340,5 +378,8 @@ if __name__ == "__main__":
         st.session_state['user_essay'] = ""
     if 'ai_feedback' not in st.session_state:
         st.session_state['ai_feedback'] = ""
+    # Base64 이미지 데이터 저장을 위한 세션 상태 초기화
+    if 'uploaded_file_data' not in st.session_state:
+        st.session_state['uploaded_file_data'] = None
         
     main()
