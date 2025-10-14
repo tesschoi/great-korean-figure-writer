@@ -1,32 +1,46 @@
 # app.py
+# 중학교 1학년 영어 작문 보조 웹앱 (Gemini API 기반, 업데이트 버전)
 
 import streamlit as st
+import os
 from google import genai
 from google.genai import types
-import os
+import urllib.parse # 이메일 링크 생성을 위해 파이썬 표준 라이브러리 추가
 
 # --- 1. 앱 설정 및 CSS 스타일링 (폰트, 제목 등) ---
 def setup_page():
-    # 명조체 계열 폰트 적용을 위한 CSS
+    # Nanum Myeongjo (명조체) 폰트 적용을 위한 CSS
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo&display=swap');
+        @import url('https://fonts.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap');
         
-        .main-font {
-            font-family: 'Nanum Myeongjo', serif;
-            font-size: 1.1em;
-        }
-        
-        /* 텍스트 입력 영역에도 폰트 적용 (Streamlit의 텍스트 영역 클래스) */
-        textarea {
+        /* 주 폰트 스타일 */
+        .main-font, .stMarkdown, .stTextArea textarea, .stTextInput input {
             font-family: 'Nanum Myeongjo', serif !important;
         }
+        
+        /* 텍스트 입력 영역 폰트도 명조체로 강제 적용 */
+        .stTextArea textarea {
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
 
-        /* 큰 제목 스타일 */
+        /* 제목 스타일 */
         h1 {
-            color: #1E90FF; /* 파란색 계열 */
+            color: #1E88E5; /* 산뜻한 파란색 */
             text-align: center;
+        }
+
+        /* 피드백 박스 스타일 */
+        .feedback-box {
+            background-color: #E3F2FD; 
+            border-left: 5px solid #1E88E5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 1.05em;
+            white-space: pre-wrap; /* 피드백 내용 줄바꿈 유지 */
         }
         </style>
         """,
@@ -34,22 +48,34 @@ def setup_page():
     )
     
     st.title("🇰🇷 Great Korean Figure Writer 🖊️")
-    st.subheader("나만의 한국 위인 소개글 작성 및 AI 피드백 앱 (중학교 1학년)")
+    st.subheader("나만의 한국 위인 소개글 작성 및 AI 피드백 (중학교 1학년)")
 
 # --- 2. Gemini API를 이용한 피드백 요청 함수 ---
-# 피드백 기준을 상세히 포함하여 LLM의 응답 품질을 높임
 def get_ai_feedback(student_text):
-    # API 키 설정 (보안을 위해 환경 변수에서 불러옴)
-    try:
-        # st.secrets 대신 os.environ을 사용하여 Render 배포 환경 변수와 일치시킴
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    except KeyError:
-        st.error("❌ 오류: Gemini API 키가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
-        return "API 오류로 피드백을 제공할 수 없습니다."
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        st.error("❌ 오류: Gemini API 키가 환경 변수(GEMINI_API_KEY)에 설정되지 않았습니다.")
+        return None
     
-    # AI에게 전달할 상세한 시스템 프롬프트 (가이드라인)
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        st.error(f"Gemini Client 초기화 오류: {e}")
+        return None
+    
+    # 현재 문장 수를 계산하여 조건 충족 여부 확인에 사용
+    sentence_count = len([s for s in student_text.split('.') if s.strip()])
+    
+    # 중학교 1학년 수준에 맞춘 AI 제약 조건 추가 (관계대명사, 어려운 어휘 금지)
+    restriction_notes = (
+        "학생은 중학교 1학년이므로, 제안하는 수정 문장이나 개선 조언 시 절대 **관계대명사(who, which, that)**를 사용하지 마세요. "
+        "또한, 어휘 수준을 **중학교 1학년**에게 맞춰 주세요. 'legendary', 'remarkable'과 같은 어려운 단어 대신 'great', 'famous', 'important'와 같은 기본 어휘를 사용하도록 조언하고 수정하세요."
+    )
+    
     system_prompt = f"""
     당신은 중학교 1학년 학생의 영어 작문 보조 AI 튜터입니다.
+    {restriction_notes}
+    
     학생이 작성한 '한국의 위인 소개글'에 대해 아래 3가지 단계로 피드백을 제공하세요.
     학생의 글: "{student_text}"
     
@@ -63,35 +89,36 @@ def get_ai_feedback(student_text):
     - to부정사(목적/의도) 사용 여부: (O/X)
     - because 사용 여부: (O/X)
     - look 사용(외양 묘사) 여부: (O/X)
-    - 7문장 이상 여부 (현재 {len(student_text.split('.'))} 문장): (O/X) (마침표 기준)
+    - 7문장 이상 여부 (현재 {sentence_count} 문장): (O/X) 
     
     **2. 유창성 및 오류 수정 (✅):**
-    문법(어법), 어휘, 철자, 대소문자, 문장 부호 오류를 찾아 수정된 완벽한 문장을 제시하세요. 
-    (수정된 문장만 제시하고, 오류가 없으면 "✅ 오류 없음"이라고 명시)
+    문법(어법), 어휘, 철자, 대소문자, 문장 부호 오류를 찾아 수정된 완벽한 문장만 제시하세요. 
+    (수정된 문장만 제시하며, 여러 오류가 있으면 모두 수정된 최종 문장만 나열하세요. 오류가 없으면 "✅ 오류 없음. 글의 문법, 어휘, 철자가 완벽합니다."라고 명시)
     
     **3. 종합 피드백 및 개선 조언 (💡):**
     - 글의 흐름이 자연스러운지 평가하고 개선할 점을 간결하게 설명하세요.
-    - 특히 충족하지 못한 조건(1단계의 X 항목)을 언급하며 학생이 다음 작성 시 *어떻게* 보완해야 할지 구체적인 영어 표현 예시와 함께 친절하게 조언하세요. (한국어로 작성)
+    - 특히 1단계에서 충족하지 못한 조건(X 항목)을 언급하며 학생이 다음 작성 시 *어떻게* 보완해야 할지 구체적인 영어 표현 예시와 함께 친절하게 조언하세요. (한국어로 작성)
     ---
     """
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # 응답 속도가 빠르고 텍스트 생성에 적합한 모델 선택
+            model='gemini-2.5-flash', 
             contents=[system_prompt],
             config=types.GenerateContentConfig(
-                temperature=0.3 # 창의성보다 정확한 피드백을 위해 낮은 온도 설정
+                temperature=0.3 
             )
         )
         return response.text
     except Exception as e:
-        return f"Gemini API 호출 중 오류가 발생했습니다: {e}"
+        st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
+        return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
 # --- 3. Streamlit 메인 함수 ---
 def main():
     setup_page()
     
-    # 앱 안내 및 작성 조건 제시
+    # 작성 조건 안내 (생략 - 기존과 동일)
     st.markdown(
         """
         <div class="main-font">
@@ -104,9 +131,9 @@ def main():
         4. 위인의 **모습**이 담긴 사진을 제시하며 **외양을 묘사**하는 내용 쓰기
         
         ### 🔑 Key Expressions (Grammar Check)
-        - **to부정사**를 사용하여 행동의 목적/의도 표현하기 (e.g., *He worked hard **to** save the country.*)
+        - **to부정사**를 사용하여 행동의 목적/의도 표현하기 
         - **because**를 사용하여 이유를 표현하기
-        - **look**을 사용하여 외양을 묘사하기 (e.g., *She **looks** kind.*)
+        - **look**을 사용하여 외양을 묘사하기 
         
         ### ✅ 최종 완성 조건
         1. 완성된 글은 **7문장 이상**이어야 합니다.
@@ -120,46 +147,116 @@ def main():
     
     # 텍스트 입력 영역
     st.markdown("### ✍️ 내 소개글 작성하기")
-    # Streamlit 텍스트 영역 (height 설정으로 충분한 공간 확보)
     user_text = st.text_area(
         "여기에 위인 소개글을 영어로 작성하세요.", 
-        height=300,
+        height=350,
         key="essay_input",
-        placeholder="e.g., I want to introduce King Sejong. He was a great king of Joseon Dynasty..."
+        placeholder="예시: I want to introduce Sejong the Great. He was a great king of Joseon Dynasty...",
     )
 
-    # 위인 사진 업로드 (선택 사항이지만 외양 묘사 조건에 필요)
-    st.markdown("### 📸 위인 사진 업로드 (선택)")
+    # 위인 사진 업로드 
+    st.markdown("### 📸 위인 사진 업로드 (선택, 외양 묘사를 위해 권장)")
     uploaded_file = st.file_uploader("위인의 사진을 업로드해주세요.", type=["png", "jpg", "jpeg"])
     if uploaded_file is not None:
-        st.image(uploaded_file, caption="업로드된 위인 사진", width=200)
+        st.image(uploaded_file, caption="업로드된 위인 사진", width=250)
 
     # 피드백 요청 버튼
-    if st.button("✨ AI 튜터에게 피드백 요청하기"):
+    feedback = None
+    if st.button("✨ AI 튜터에게 피드백 요청하기", use_container_width=True):
         if not user_text.strip():
-            st.warning("먼저 소개글을 작성해주세요!")
+            st.warning("먼저 소개글을 작성해주세요! (7문장 이상)")
         else:
-            with st.spinner("AI 튜터가 열심히 분석 중입니다..."):
+            with st.spinner("AI 튜터가 학생의 글을 꼼꼼하게 분석하고 있습니다..."):
                 feedback = get_ai_feedback(user_text)
             
-            st.markdown("---")
-            st.markdown("### 🤖 AI 튜터 피드백 결과")
-            # 피드백 내용에 폰트 적용
-            st.markdown(f'<div class="main-font">{feedback}</div>', unsafe_allow_html=True)
+            if feedback:
+                st.session_state['user_essay'] = user_text
+                st.session_state['ai_feedback'] = feedback
+                
+                st.markdown("---")
+                st.markdown("### 🤖 AI 튜터 피드백 결과")
+                st.markdown(f'<div class="feedback-box main-font">{feedback}</div>', unsafe_allow_html=True)
 
-            st.balloons() # 피드백 완료 시 시각 효과
-            
-            # 수정 유도 메시지
-            st.markdown(
-                """
-                <br>
-                <div class="main-font" style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 5px solid #1E90FF;">
-                👆 **수정하기:** 피드백을 참고하여 위의 '내 소개글 작성하기' 칸에서 글을 직접 수정해 보세요! 모든 조건에 O를 받을 때까지 반복할 수 있습니다.
-                </div>
-                """, 
-                unsafe_allow_html=True
+                st.balloons() 
+                
+                # 수정 유도 메시지
+                st.markdown(
+                    """
+                    <br>
+                    <div class="main-font" style="background-color: #fffde7; padding: 10px; border-radius: 5px; border-left: 5px solid #FFC107;">
+                    👆 **수정하고 다시 받기:** 피드백을 참고하여 위의 '내 소개글 작성하기' 칸에서 글을 직접 수정해 보세요! 모든 조건에 O를 받을 때까지 반복할 수 있습니다.
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
+    
+    # --- 4. 결과 공유 기능 (선생님께 이메일 전송) ---
+    if 'ai_feedback' in st.session_state and st.session_state['ai_feedback']:
+        st.markdown("---")
+        st.markdown("### 💌 최종 결과 선생님께 보내기")
+
+        # 선생님 이메일 주소 입력 (학생이 매번 입력해야 하므로 placeholder 제공)
+        teacher_email = st.text_input(
+            "선생님 이메일 주소", 
+            value="teacher@school.edu", 
+            key="teacher_email_input",
+            placeholder="선생님의 이메일 주소를 입력하세요 (예: myteacher@school.com)"
+        )
+        
+        # mailto 링크 생성 함수
+        def create_mailto_link(essay, feedback, email):
+            # 이메일 본문에 들어갈 내용을 구조화
+            body_content = (
+                "안녕하세요 선생님,\n\n"
+                "[학생 이름]: [반/번호] \n"
+                "AI 튜터링을 완료한 저의 위인 소개글 최종 결과입니다.\n"
+                "----------------------------------------------------\n"
+                "**1. 학생이 작성한 최종 글:**\n"
+                f"{essay}\n\n"
+                "----------------------------------------------------\n"
+                "**2. AI가 제공한 최종 피드백:**\n"
+                f"{feedback}\n"
+                "----------------------------------------------------\n"
             )
+            
+            subject = "AI 튜터 작문 최종 결과: 한국 위인 소개글 (학생 이름과 반/번호를 꼭 수정하세요)"
+            
+            # URL 인코딩 (mailto 링크는 특수 문자 인코딩이 필수)
+            encoded_subject = urllib.parse.quote(subject)
+            encoded_body = urllib.parse.quote(body_content)
+            
+            return f"mailto:{email}?subject={encoded_subject}&body={encoded_body}"
+
+        # 이메일 보내기 버튼 (실제로는 링크를 HTML로 출력하여 이메일 클라이언트를 엽니다)
+        if st.button("📧 최종 결과 이메일 클라이언트 열기 (클릭)", use_container_width=True):
+            if not teacher_email or teacher_email == "teacher@school.edu":
+                st.error("선생님의 정확한 이메일 주소를 먼저 입력해 주세요.")
+            else:
+                mailto_href = create_mailto_link(
+                    st.session_state['user_essay'], 
+                    st.session_state['ai_feedback'], 
+                    teacher_email
+                )
+                
+                # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행
+                st.markdown(
+                    f"""
+                    <div class="main-font" style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; border: 1px solid #4CAF50;">
+                        <p>👆 위 링크를 클릭하면 학생의 이메일 앱(또는 웹 메일)이 열립니다.</p>
+                        <a href="{mailto_href}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-align: center; border-radius: 5px; text-decoration: none; font-size: 1.1em; margin-top: 10px;">
+                            ✉️ 이메일 작성 시작하기
+                        </a>
+                        <p style="margin-top: 15px; color: #D32F2F;">**[주의]** 이메일이 열리면, **제목에 학생 이름과 반/번호를 반드시 수정**하고 내용을 확인한 후 발송하도록 학생들에게 지도해 주세요.</p>
+                    </div>
+                    """, unsafe_allow_html=True
+                )
 
 # 앱 실행
 if __name__ == "__main__":
+    # 세션 상태 초기화
+    if 'user_essay' not in st.session_state:
+        st.session_state['user_essay'] = ""
+    if 'ai_feedback' not in st.session_state:
+        st.session_state['ai_feedback'] = ""
+        
     main()
