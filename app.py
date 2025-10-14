@@ -1,11 +1,11 @@
 # app.py
-# 중학교 1학년 영어 작문 보조 웹앱 (Gemini API 기반, 업데이트 버전)
+# 중학교 1학년 영어 작문 보조 웹앱 (Gemini API 기반, 최종 버전)
 
 import streamlit as st
 import os
 from google import genai
 from google.genai import types
-import urllib.parse # 이메일 링크 생성을 위해 파이썬 표준 라이브러리 추가
+import urllib.parse 
 
 # --- 1. 앱 설정 및 CSS 스타일링 (폰트, 제목 등) ---
 def setup_page():
@@ -114,11 +114,34 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
+# --- 이메일 링크 생성 함수 ---
+def create_mailto_link(essay, feedback, email):
+    body_content = (
+        "안녕하세요 선생님,\n\n"
+        "[학생 이름]: [반/번호] \n"
+        "AI 튜터링을 완료한 저의 위인 소개글 최종 결과입니다.\n"
+        "----------------------------------------------------\n"
+        "**1. 학생이 작성한 최종 글:**\n"
+        f"{essay}\n\n"
+        "----------------------------------------------------\n"
+        "**2. AI가 제공한 최종 피드백:**\n"
+        f"{feedback}\n"
+        "----------------------------------------------------\n"
+    )
+    
+    subject = "AI 튜터 작문 최종 결과: 한국 위인 소개글 (학생 이름과 반/번호를 꼭 수정하세요)"
+    
+    encoded_subject = urllib.parse.quote(subject)
+    encoded_body = urllib.parse.quote(body_content)
+    
+    return f"mailto:{email}?subject={encoded_subject}&body={encoded_body}"
+
+
 # --- 3. Streamlit 메인 함수 ---
 def main():
     setup_page()
     
-    # 작성 조건 안내 (생략 - 기존과 동일)
+    # 작성 조건 안내 (생략)
     st.markdown(
         """
         <div class="main-font">
@@ -195,42 +218,19 @@ def main():
         st.markdown("---")
         st.markdown("### 💌 최종 결과 선생님께 보내기")
 
-        # 선생님 이메일 주소 입력 (학생이 매번 입력해야 하므로 placeholder 제공)
+        # >>>>>> 이 부분의 'value'에 선생님의 실제 이메일 주소를 입력해 주세요! <<<<<<
+        # 예시: value="my_actual_email@school.go.kr"
         teacher_email = st.text_input(
-            "선생님 이메일 주소", 
-            value="teacher@school.edu", 
+            "선생님 이메일 주소 (자동 입력됨)", 
+            value="[fun_english_ssam@naver.com]", # <<< 이 값을 수정하세요!
             key="teacher_email_input",
-            placeholder="선생님의 이메일 주소를 입력하세요 (예: myteacher@school.com)"
+            placeholder="선생님의 이메일 주소가 자동으로 입력됩니다."
         )
         
-        # mailto 링크 생성 함수
-        def create_mailto_link(essay, feedback, email):
-            # 이메일 본문에 들어갈 내용을 구조화
-            body_content = (
-                "안녕하세요 선생님,\n\n"
-                "[학생 이름]: [반/번호] \n"
-                "AI 튜터링을 완료한 저의 위인 소개글 최종 결과입니다.\n"
-                "----------------------------------------------------\n"
-                "**1. 학생이 작성한 최종 글:**\n"
-                f"{essay}\n\n"
-                "----------------------------------------------------\n"
-                "**2. AI가 제공한 최종 피드백:**\n"
-                f"{feedback}\n"
-                "----------------------------------------------------\n"
-            )
-            
-            subject = "AI 튜터 작문 최종 결과: 한국 위인 소개글 (학생 이름과 반/번호를 꼭 수정하세요)"
-            
-            # URL 인코딩 (mailto 링크는 특수 문자 인코딩이 필수)
-            encoded_subject = urllib.parse.quote(subject)
-            encoded_body = urllib.parse.quote(body_content)
-            
-            return f"mailto:{email}?subject={encoded_subject}&body={encoded_body}"
-
         # 이메일 보내기 버튼 (실제로는 링크를 HTML로 출력하여 이메일 클라이언트를 엽니다)
         if st.button("📧 최종 결과 이메일 클라이언트 열기 (클릭)", use_container_width=True):
-            if not teacher_email or teacher_email == "teacher@school.edu":
-                st.error("선생님의 정확한 이메일 주소를 먼저 입력해 주세요.")
+            if teacher_email == "[여기에 선생님 실제 이메일 주소를 넣어주세요]" or not teacher_email:
+                st.error("❌ 오류: 선생님 이메일 주소가 올바르게 설정되거나 입력되지 않았습니다. 관리자(선생님)에게 문의하세요.")
             else:
                 mailto_href = create_mailto_link(
                     st.session_state['user_essay'], 
