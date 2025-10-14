@@ -42,6 +42,18 @@ def setup_page():
             font-size: 1.05em;
             white-space: pre-wrap; /* 피드백 내용 줄바꿈 유지 */
         }
+        
+        /* 번역 결과 박스 스타일 추가 */
+        .translation-box {
+            background-color: #f0fdf4; /* 연한 초록색 배경 */
+            border: 2px solid #16a34a; /* 진한 초록색 테두리 */
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 1.1em;
+            color: #16a34a;
+            font-weight: bold;
+        }
         </style>
         """,
         unsafe_allow_html=True
@@ -114,6 +126,36 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
+# --- 2-1. 한글->영어 번역 함수 추가 ---
+def get_translation(korean_text):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return "API 키 설정 오류"
+    
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        return f"Gemini Client 초기화 오류: {e}"
+
+    system_prompt = (
+        "당신은 중학교 1학년 수준에 맞는 한영 번역기입니다. "
+        "주어진 한글 문장이나 짧은 표현을 자연스러운 영어 문장으로 번역해주세요. "
+        "답변에는 오직 번역된 영어 문장만 포함해야 합니다. 다른 설명이나 텍스트를 추가하지 마세요."
+    )
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', 
+            contents=[korean_text],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.2 # 번역은 창의성보다 정확성이 중요
+            )
+        )
+        return response.text.strip()
+    except Exception as e:
+        return f"번역 API 호출 중 오류 발생: {e}"
+
 # --- 이메일 링크 생성 함수 ---
 def create_mailto_link(essay, feedback, email):
     body_content = (
@@ -168,6 +210,39 @@ def main():
         unsafe_allow_html=True
     )
     
+    # --- 4. 한글 번역기 영역 추가 (새로운 기능) ---
+    st.markdown("---")
+    st.markdown("### 🗣️ 한글 표현 번역기 (작문 보조 도구)")
+    st.markdown("떠오르는 한글 표현을 여기에 입력하고 번역 버튼을 누르면 영어로 바꿔줍니다. (문장 단위 번역)")
+    
+    korean_input = st.text_input(
+        "번역할 한글 문장이나 짧은 표현을 입력하세요.", 
+        key="korean_translator_input",
+        placeholder="예시: 그는 위대한 발명가입니다."
+    )
+    
+    # 세션 상태에서 번역 결과를 관리
+    if 'translated_text' not in st.session_state:
+        st.session_state['translated_text'] = "번역 결과가 여기에 표시됩니다."
+
+    if st.button("🔄 영어로 번역하기", key="translate_button", use_container_width=False):
+        if korean_input.strip():
+            with st.spinner("AI가 번역 중입니다..."):
+                translation_result = get_translation(korean_input)
+                st.session_state['translated_text'] = translation_result
+        else:
+            st.session_state['translated_text'] = "번역할 한글 표현을 입력해주세요."
+
+    # 번역 결과를 깔끔하게 표시
+    st.markdown("#### ✨ 번역 결과 (English)")
+    st.markdown(
+        f'<div class="translation-box main-font">{st.session_state["translated_text"]}</div>',
+        unsafe_allow_html=True
+    )
+    st.markdown("---")
+    # --- 한글 번역기 영역 끝 ---
+
+
     # 텍스트 입력 영역
     st.markdown("### ✍️ 내 소개글 작성하기")
     user_text = st.text_area(
@@ -213,22 +288,21 @@ def main():
                     unsafe_allow_html=True
                 )
     
-    # --- 4. 결과 공유 기능 (선생님께 이메일 전송) ---
+    # --- 5. 결과 공유 기능 (선생님께 이메일 전송) ---
     if 'ai_feedback' in st.session_state and st.session_state['ai_feedback']:
         st.markdown("---")
         st.markdown("### 💌 최종 결과 선생님께 보내기")
 
-        # [수정] 대괄호 제거: 이메일 주소를 깨끗하게 설정하여 mailto 링크 오류를 해결합니다.
+        # 이메일 주소 자동 입력 (선생님 주소)
         teacher_email = st.text_input(
             "선생님 이메일 주소 (자동 입력됨)", 
-            value="fun_english_ssam@naver.com", # <<< 대괄호 제거됨!
+            value="fun_english_ssam@naver.com", 
             key="teacher_email_input",
             placeholder="선생님의 이메일 주소가 자동으로 입력됩니다."
         )
         
         # 이메일 보내기 버튼 (실제로는 링크를 HTML로 출력하여 이메일 클라이언트를 엽니다)
         if st.button("📧 최종 결과 이메일 클라이언트 열기 (클릭)", use_container_width=True):
-            # [수정] 오류 검사 로직 간소화: 이메일 필드가 비어 있는지 확인합니다.
             if not teacher_email.strip():
                 st.error("❌ 오류: 선생님 이메일 주소를 입력해주세요.")
             else:
