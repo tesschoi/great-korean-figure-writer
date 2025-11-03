@@ -132,7 +132,7 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
-# --- 2-1. 한글->영어 번역 함수 추가 ---
+# --- 2-1. 한글->영어 번역 함수 수정 (오직 영어만 출력하도록 시스템 명령어 강화) ---
 def get_translation(korean_text):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -143,18 +143,22 @@ def get_translation(korean_text):
     except Exception as e:
         return f"Gemini Client 초기화 오류: {e}"
 
+    # ****** 수정된 부분: System Prompt 강화 ******
+    # 모델에게 '전문 번역가' 역할을 부여하고, **오직 영어 문장만** 출력하도록 강력하게 지시
     system_prompt = (
-        "당신은 중학교 1학년 수준에 맞는 한영 번역기입니다. "
-        "주어진 한글 문장이나 짧은 표현을 자연스러운 영어 문장으로 번역해주세요. "
-        "답변에는 오직 번역된 영어 문장만 포함해야 합니다. 다른 설명이나 텍스트를 추가하지 마세요."
+        "You are a professional Korean-English translator for middle school students. "
+        "Your only task is to strictly translate the user's input (Korean sentence or short expression) into fluent, natural English. "
+        "Provide **ONLY THE ENGLISH TRANSLATION** and nothing else (no explanations, no greetings, no contextual text, no Korean). "
+        "Ensure the vocabulary level is appropriate for a middle school student."
     )
+    # **********************************************
     
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash', 
             contents=[korean_text],
             config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
+                system_instruction=system_prompt, # 강화된 시스템 명령어 적용
                 temperature=0.2 # 번역은 창의성보다 정확성이 중요
             )
         )
