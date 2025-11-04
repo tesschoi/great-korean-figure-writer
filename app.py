@@ -6,6 +6,7 @@ import os
 from google import genai
 from google.genai import types
 import urllib.parse 
+import json # <--- JSON 처리를 위해 라이브러리 추가
 # import base64 # 사진 첨부 기능 제거로 인해 삭제
 # import io # 사진 첨부 기능 제거로 인해 삭제
 
@@ -132,7 +133,7 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
-# --- 2-1. 한글->영어 번역 함수 수정 (오직 영어만 출력하도록 시스템 명령어 강화) ---
+# --- 2-1. 한글->영어 번역 함수 수정 (JSON 출력 강제) ---
 def get_translation(korean_text):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -143,45 +144,59 @@ def get_translation(korean_text):
     except Exception as e:
         return f"Gemini Client 초기화 오류: {e}"
 
-    # ****** 재수정된 부분: System Prompt 및 응답 후처리 강화 ******
-    # 모델에게 '전문 번역가' 역할을 부여하고, **오직 영어 문장만** 출력하도록 강력하게 지시 (다른 언어 사용 금지 명시)
+    # ****** JSON 출력을 강제하는 System Prompt 및 Schema 정의 ******
     system_prompt = (
         "You are a professional Korean-English translator for middle school students. "
-        "Your sole task is to strictly translate the user's input (Korean sentence or short expression) into fluent, natural English. "
-        "Provide **ONLY THE ENGLISH TRANSLATION** and nothing else. DO NOT use any other language, especially KOREAN. "
-        "Ensure the vocabulary level is appropriate for a middle school student."
+        "Your sole task is to strictly translate the user's input into fluent, natural English. "
+        "You MUST return the translation in a single-line JSON format with the key 'translation'. "
+        "Provide ONLY the JSON object and nothing else. DO NOT use any other language, especially KOREAN, outside of the required JSON value."
     )
-    # ***************************************************************
+    
+    # JSON 스키마 정의: { "translation": "..." }
+    response_schema = types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "translation": types.Schema(
+                type=types.Type.STRING,
+                description="The English translation of the Korean input."
+            )
+        },
+        required=["translation"]
+    )
+    # ********************************************************************************
     
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash', 
             contents=[korean_text],
             config=types.GenerateContentConfig(
-                system_instruction=system_prompt, # 강화된 시스템 명령어 적용
-                temperature=0.2 # 번역은 창의성보다 정확성이 중요
+                system_instruction=system_prompt,
+                temperature=0.2, 
+                # JSON 출력 타입 강제
+                response_mime_type="application/json",
+                response_schema=response_schema
             )
         )
         
-        raw_text = response.text.strip()
+        raw_json_text = response.text.strip()
         
-        # **** 응답 후처리 로직 추가 ****
-        # 혹시라도 모델이 불필요한 서문을 달았을 경우, 첫 번째 문장(줄)만 추출하여 순수한 영어 번역만 반환
-        # .을 기준으로 첫 문장을 찾거나, 줄바꿈을 기준으로 첫 줄을 사용합니다.
-        
-        if '.' in raw_text:
-            # 마침표가 있다면 첫 문장만 반환
-            clean_translation = raw_text.split('.')[0].strip()
-            if clean_translation.endswith(','): # 문장 중간에 쉼표로 끝나는 경우를 대비
-                clean_translation += '.'
-            elif not clean_translation.endswith(('!', '?')):
+        try:
+            # JSON 파싱 및 'translation' 키에서 값 추출
+            parsed_json = json.loads(raw_json_text)
+            clean_translation = parsed_json.get("translation", "번역 결과가 없습니다. (JSON key 오류)").strip()
+            
+            # 후처리: 마침표가 없으면 추가하여 깔끔하게 만듭니다.
+            if clean_translation and not clean_translation.endswith(('.', '!', '?')):
                  clean_translation += '.'
-        else:
-            # 마침표가 없다면 첫 줄만 반환
-            clean_translation = raw_text.split('\n')[0].strip()
-        
-        return clean_translation
 
+            return clean_translation
+            
+        except json.JSONDecodeError:
+            # 파싱 실패 시: 모델이 JSON 대신 예상치 못한 텍스트(예: 한국어)를 반환한 경우
+            st.error("❌ 오류: 모델이 요구된 JSON 형식이 아닌 텍스트를 반환했습니다. (태블릿 환경에서 발생하는 모델의 일탈적인 동작 가능성)")
+            # 이 오류 텍스트를 사용자에게 보여줍니다.
+            return f"❌ 오류 발생: {raw_json_text} (모델이 잘못된 형식을 반환함)"
+            
     except Exception as e:
         return f"번역 API 호출 중 오류 발생: {e}"
 
