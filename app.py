@@ -134,7 +134,7 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
-# --- 2-1. 한글->영어 번역 함수 (최종, 마침표 후처리 로직 제거) ---
+# --- 2-1. 한글->영어 번역 함수 (최종, 마침표 강제 제거 로직 추가) ---
 def get_translation(korean_text):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -146,10 +146,11 @@ def get_translation(korean_text):
         return f"Gemini Client 초기화 오류: {e}"
 
     # ****** JSON 출력을 강제하는 System Prompt 및 Schema 정의 ******
-    # 🚨 비상 대책: 모델의 한국어 출력 자체를 원천 봉쇄 (기존 로직 유지)
+    # 🚨 핵심 수정 1: 마침표/구두점 포함 금지 지침 추가
     system_prompt = (
         "You are an English-Only Translation Machine. "
         "Your task is ONLY to translate the Korean text you receive into fluent English. "
+        "DO NOT include any period or final punctuation in the translation. "
         "You MUST return the translation in a single-line JSON format with the key 'translation'. "
         "Provide ONLY the JSON object and nothing else. "
         "DO NOT use any Korean language in your output, including in the JSON value." # <-- 모든 한국어 출력 금지 지침 유지
@@ -161,7 +162,7 @@ def get_translation(korean_text):
         properties={
             "translation": types.Schema(
                 type=types.Type.STRING,
-                description="The complete English translation of the user's Korean input. Ensure the response is in English."
+                description="The complete English translation of the user's Korean input without any final punctuation. Ensure the response is in English."
             )
         },
         required=["translation"]
@@ -200,10 +201,11 @@ def get_translation(korean_text):
                 # 여전히 한국어가 포함되어 있다면 입력 텍스트를 따라했을 가능성이 높습니다.
                 return f"🚨 번역 실패: 모델이 한국어 입력값을 반환했습니다. 원본 입력값: {korean_text}"
                 
-            # === 마침표 후처리 로직 제거: 번역 결과에 마침표를 추가하지 않습니다. ===
-            # if clean_translation and not clean_translation.endswith(('.', '!', '?')):
-            #      clean_translation += '.'
-            # ===================================================================
+            # 🚨 핵심 수정 2: 강력한 후처리: 마침표, 물음표, 느낌표, 쉼표 및 공백을 오른쪽 끝에서 모두 제거
+            # 단, 이 번역기는 문장 단위가 아닌 표현 단위 번역을 지원할 수 있으므로, .?!, 를 모두 제거하도록 처리합니다.
+            # 하지만 문장 단위로 사용하는 것이 일반적이므로 일단은 마침표와 공백만 제거합니다.
+            clean_translation = clean_translation.rstrip('. ').strip() 
+
 
             return clean_translation
             
