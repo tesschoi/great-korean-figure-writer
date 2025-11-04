@@ -143,15 +143,15 @@ def get_translation(korean_text):
     except Exception as e:
         return f"Gemini Client 초기화 오류: {e}"
 
-    # ****** 수정된 부분: System Prompt 강화 ******
-    # 모델에게 '전문 번역가' 역할을 부여하고, **오직 영어 문장만** 출력하도록 강력하게 지시
+    # ****** 재수정된 부분: System Prompt 및 응답 후처리 강화 ******
+    # 모델에게 '전문 번역가' 역할을 부여하고, **오직 영어 문장만** 출력하도록 강력하게 지시 (다른 언어 사용 금지 명시)
     system_prompt = (
         "You are a professional Korean-English translator for middle school students. "
-        "Your only task is to strictly translate the user's input (Korean sentence or short expression) into fluent, natural English. "
-        "Provide **ONLY THE ENGLISH TRANSLATION** and nothing else (no explanations, no greetings, no contextual text, no Korean). "
+        "Your sole task is to strictly translate the user's input (Korean sentence or short expression) into fluent, natural English. "
+        "Provide **ONLY THE ENGLISH TRANSLATION** and nothing else. DO NOT use any other language, especially KOREAN. "
         "Ensure the vocabulary level is appropriate for a middle school student."
     )
-    # **********************************************
+    # ***************************************************************
     
     try:
         response = client.models.generate_content(
@@ -162,7 +162,26 @@ def get_translation(korean_text):
                 temperature=0.2 # 번역은 창의성보다 정확성이 중요
             )
         )
-        return response.text.strip()
+        
+        raw_text = response.text.strip()
+        
+        # **** 응답 후처리 로직 추가 ****
+        # 혹시라도 모델이 불필요한 서문을 달았을 경우, 첫 번째 문장(줄)만 추출하여 순수한 영어 번역만 반환
+        # .을 기준으로 첫 문장을 찾거나, 줄바꿈을 기준으로 첫 줄을 사용합니다.
+        
+        if '.' in raw_text:
+            # 마침표가 있다면 첫 문장만 반환
+            clean_translation = raw_text.split('.')[0].strip()
+            if clean_translation.endswith(','): # 문장 중간에 쉼표로 끝나는 경우를 대비
+                clean_translation += '.'
+            elif not clean_translation.endswith(('!', '?')):
+                 clean_translation += '.'
+        else:
+            # 마침표가 없다면 첫 줄만 반환
+            clean_translation = raw_text.split('\n')[0].strip()
+        
+        return clean_translation
+
     except Exception as e:
         return f"번역 API 호출 중 오류 발생: {e}"
 
