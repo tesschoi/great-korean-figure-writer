@@ -133,7 +133,7 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
-# --- 2-1. 한글->영어 번역 함수 수정 (JSON 출력 강제) ---
+# --- 2-1. 한글->영어 번역 함수 수정 (JSON 출력 최종 강화) ---
 def get_translation(korean_text):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -145,11 +145,12 @@ def get_translation(korean_text):
         return f"Gemini Client 초기화 오류: {e}"
 
     # ****** JSON 출력을 강제하는 System Prompt 및 Schema 정의 ******
+    # 시스템 프롬프트는 오직 번역 행위와 출력 형식에만 집중.
     system_prompt = (
-        "You are a professional Korean-English translator for middle school students. "
-        "Your sole task is to strictly translate the user's input into fluent, natural English. "
+        "You are a professional Korean-English translator. "
+        "Your task is to translate the Korean text provided in the user's prompt into fluent, natural English. "
         "You MUST return the translation in a single-line JSON format with the key 'translation'. "
-        "Provide ONLY the JSON object and nothing else. DO NOT use any other language, especially KOREAN, outside of the required JSON value."
+        "Provide ONLY the JSON object and nothing else. The output translation must be English."
     )
     
     # JSON 스키마 정의: { "translation": "..." }
@@ -158,7 +159,7 @@ def get_translation(korean_text):
         properties={
             "translation": types.Schema(
                 type=types.Type.STRING,
-                description="The English translation of the Korean input."
+                description=f"The English translation of the Korean input: '{korean_text}'" # <-- 입력 텍스트를 description에 포함
             )
         },
         required=["translation"]
@@ -166,9 +167,12 @@ def get_translation(korean_text):
     # ********************************************************************************
     
     try:
+        # User input은 모델에게 명시적인 번역 요청 메시지를 전달
+        user_message = f"Please translate the following Korean text into English: {korean_text}"
+        
         response = client.models.generate_content(
             model='gemini-2.5-flash', 
-            contents=[korean_text],
+            contents=[user_message],
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.2, 
@@ -189,13 +193,20 @@ def get_translation(korean_text):
             if clean_translation and not clean_translation.endswith(('.', '!', '?')):
                  clean_translation += '.'
 
+            # 최종적으로 한국어가 포함되어 있는지 확인하는 마지막 검증
+            # (이 로직은 만일을 대비한 것이며, JSON 강제 시 필요 없을 가능성이 높습니다.)
+            import re
+            korean_check = re.search(r'[\uac00-\ud7a3]', clean_translation)
+            if korean_check:
+                return "🚨 번역 실패: 예상치 못한 한국어가 최종 결과에 포함되었습니다."
+                
             return clean_translation
             
         except json.JSONDecodeError:
             # 파싱 실패 시: 모델이 JSON 대신 예상치 못한 텍스트(예: 한국어)를 반환한 경우
-            st.error("❌ 오류: 모델이 요구된 JSON 형식이 아닌 텍스트를 반환했습니다. (태블릿 환경에서 발생하는 모델의 일탈적인 동작 가능성)")
+            st.error(f"❌ 오류: 모델이 요구된 JSON 형식이 아닌 텍스트를 반환했습니다. 원본 응답: {raw_json_text}")
             # 이 오류 텍스트를 사용자에게 보여줍니다.
-            return f"❌ 오류 발생: {raw_json_text} (모델이 잘못된 형식을 반환함)"
+            return f"❌ 오류 발생: {raw_json_text} (모델이 잘못된 형식을 반환함. 모델이 입력값을 그대로 반환했을 가능성이 높습니다.)"
             
     except Exception as e:
         return f"번역 API 호출 중 오류 발생: {e}"
