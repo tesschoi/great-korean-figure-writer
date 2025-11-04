@@ -134,7 +134,7 @@ def get_ai_feedback(student_text):
         st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
         return "Gemini API 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
 
-# --- 2-1. 한글->영어 번역 함수 수정 (JSON 출력 비상 대책) ---
+# --- 2-1. 한글->영어 번역 함수 (최종, 마침표 후처리 로직 제거) ---
 def get_translation(korean_text):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -146,13 +146,13 @@ def get_translation(korean_text):
         return f"Gemini Client 초기화 오류: {e}"
 
     # ****** JSON 출력을 강제하는 System Prompt 및 Schema 정의 ******
-    # 🚨 비상 대책: 모델의 한국어 출력 자체를 원천 봉쇄 
+    # 🚨 비상 대책: 모델의 한국어 출력 자체를 원천 봉쇄 (기존 로직 유지)
     system_prompt = (
         "You are an English-Only Translation Machine. "
         "Your task is ONLY to translate the Korean text you receive into fluent English. "
         "You MUST return the translation in a single-line JSON format with the key 'translation'. "
         "Provide ONLY the JSON object and nothing else. "
-        "DO NOT use any Korean language in your output, including in the JSON value." # <-- 모든 한국어 출력 금지 지침 추가
+        "DO NOT use any Korean language in your output, including in the JSON value." # <-- 모든 한국어 출력 금지 지침 유지
     )
     
     # JSON 스키마 정의: { "translation": "..." }
@@ -195,14 +195,15 @@ def get_translation(korean_text):
             if not clean_translation or "번역 결과가 없습니다" in clean_translation:
                  return "🚨 번역 결과가 없습니다. 다시 시도해 주세요."
 
-            # 최종 검증 2: 혹시 모를 한국어 포함 여부 확인 (마침표가 붙는 현상 방지)
+            # 최종 검증 2: 혹시 모를 한국어 포함 여부 확인 
             if re.search(r'[\uac00-\ud7a3]', clean_translation):
                 # 여전히 한국어가 포함되어 있다면 입력 텍스트를 따라했을 가능성이 높습니다.
                 return f"🚨 번역 실패: 모델이 한국어 입력값을 반환했습니다. 원본 입력값: {korean_text}"
                 
-            # 후처리: 마침표가 없으면 추가하여 깔끔하게 만듭니다.
-            if clean_translation and not clean_translation.endswith(('.', '!', '?')):
-                 clean_translation += '.'
+            # === 마침표 후처리 로직 제거: 번역 결과에 마침표를 추가하지 않습니다. ===
+            # if clean_translation and not clean_translation.endswith(('.', '!', '?')):
+            #      clean_translation += '.'
+            # ===================================================================
 
             return clean_translation
             
@@ -216,11 +217,8 @@ def get_translation(korean_text):
         return f"번역 API 호출 중 오류 발생: {e}"
 
 # --- 이메일 링크 생성 함수 (첨부 파일 처리 로직 제거) ---
-def create_mailto_link(essay, feedback, email): # uploaded_file_data 매개변수 제거
-    
-    # image_html 관련 로직 제거
-    
-    # 이메일 본문 내용 (HTML/텍스트 혼합)
+def create_mailto_link(essay, feedback, email): 
+    # ... (기존 로직 유지) ...
     body_content = (
         "안녕하세요 선생님,\n\n"
         "[학생 이름]: [반/번호] \n"
@@ -231,7 +229,6 @@ def create_mailto_link(essay, feedback, email): # uploaded_file_data 매개변�
         "----------------------------------------------------\n"
         "**2. AI가 제공한 최종 피드백:**\n"
         f"{feedback}\n"
-        # image_html 변수 사용 제거
     )
     
     subject = "AI 튜터 작문 최종 결과: 한국 위인 소개글 (학생 이름과 반/번호를 꼭 수정하세요)"
@@ -249,7 +246,7 @@ def main():
     
     setup_page()
     
-    # 작성 조건 안내 (가독성 높은 고딕체 적용을 위해 class="main-font" 제거)
+    # 작성 조건 안내
     st.markdown(
         """
         <div>
@@ -301,8 +298,9 @@ def main():
 
     # 번역 결과를 깔끔하게 표시
     st.markdown("#### ✨ 번역 결과 (English)")
+    # 브라우저 자동 번역 방지 속성은 유지합니다.
     st.markdown(
-        f'<div class="translation-box">{st.session_state["translated_text"]}</div>',
+        f'<div class="translation-box" translate="no">{st.session_state["translated_text"]}</div>',
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -317,7 +315,8 @@ def main():
         key="essay_input",
         placeholder="예시: I want to introduce Sejong the Great. He was a great king of Joseon Dynasty...",
     )
-
+    # ... (나머지 로직은 변경 없음)
+    
     # 위인 사진 업로드 
     st.markdown("### 📸 위인 사진 업로드 (선택, 외양 묘사를 위해 권장)")
     # 'uploaded_file' 객체를 세션 상태에 저장하여 이메일 전송 시 사용합니다.
@@ -337,8 +336,6 @@ def main():
             if feedback:
                 st.session_state['user_essay'] = user_text
                 st.session_state['ai_feedback'] = feedback
-                
-                # --- 사진 파일 처리 및 세션 저장 (Base64 인코딩) 로직 제거 ---
                 
                 st.markdown("---")
                 st.markdown("### 🤖 AI 튜터 피드백 결과")
@@ -380,7 +377,6 @@ def main():
                     st.session_state['user_essay'], 
                     st.session_state['ai_feedback'], 
                     teacher_email
-                    # Base64 데이터 전달 매개변수 제거
                 )
                 
                 # HTML 마크다운을 이용하여 자동 이메일 발송 링크 실행
@@ -403,6 +399,5 @@ if __name__ == "__main__":
         st.session_state['user_essay'] = ""
     if 'ai_feedback' not in st.session_state:
         st.session_state['ai_feedback'] = ""
-    # Base64 이미지 데이터 저장을 위한 세션 상태 초기화 코드 제거
         
     main()
